@@ -1,4 +1,5 @@
 from re import fullmatch as fm
+from configparser import ConfigParser
 from time import time
 
 ### GLOBAL VARIABLES
@@ -99,48 +100,29 @@ hasht = {}
 for i in dict:
     hasht[hash(i)] = i
 
+# i18n
+config = ConfigParser()
+config.read("./i18n.cfg",encoding="utf-8")
+
 ### END
 
 class JishoSearcher():
-    def  __init__(self, lang:str="zh_CN"):
+    def  __init__(self, lang:str="en"):
         # Language Setup
-        # TODO: i18n support
-        self.supported_lang = ["zh_CN"]
-        if lang in self.supported_lang:
-            self.lang = lang
-        else:
-            return "#ERR #Language Not Supported!"
+        self.lang = lang
 
 
     # Raise An Error
     def _error(self, text:str, ex:str="") -> str: # ex: explain
         # TODO: Error Message Stored Exclusively
         # TODO: More specific syntax error
-        res = "#ERR #"
-        match text:
-            case "empty":
-                res += "空表达式"
-            case "normalizerange":
-                res += "非法字符"
-            case "syntax":
-                res += "不受支持的语法"
-            case "noiterator":
-                res += "代数式匹配需要至少一个表达式包含全部的字母"
-            case "timeout":
-                res += "超时"
-            case "bracket":
-                res += "括号不匹配"
-
+        res = "#" + config[self.lang][text]
         res += ":" + ex
 
         return res
     
     # Normalization
     def _normalize(self, expr:str) -> str:
-        # Remove brackets with no text in it
-        expr = expr.replace("()", "").replace("{}","")
-        expr = expr.replace("<>", "").replace("[]", "")
-
         inbracketround = 0
         inbracketsquare = 0
         inbracketangle = 0
@@ -165,7 +147,7 @@ class JishoSearcher():
                     return self._error("bracket")
                 inbracketsquare += 1
                 if normalized[-1] != '*' and normalized[-1] != '?' and normalized[-1] != '}':
-                    return self._error("syntax", ex="[]前应有通配符")
+                    return self._error("syntax", ex=normalized[-1])
                 normalized.append(c)
                 
             elif c == ']':
@@ -201,7 +183,7 @@ class JishoSearcher():
                     return self._error("bracket")
                 inbracketcurly += 1
                 if normalized[-1] != '*' and normalized[-1] != ']':
-                    return self._error("syntax", ex="{}前应有通配符".format(c))
+                    return self._error("syntax",ex=normalized[-1])
                 normalized.append(c)
 
             elif c == '}':
@@ -217,7 +199,7 @@ class JishoSearcher():
                     if c == 'ー':
                         normalized.append('-')
                     else:
-                        return self._error("syntax", ex="{}内不允许字母")
+                        return self._error("syntax", ex=c)
                 elif inbracketsquare:
                     normalized.append(c.lower())
                 else:
@@ -234,6 +216,10 @@ class JishoSearcher():
 
             
         expr = "".join(normalized[1:])
+        # Remove brackets with no text in it
+        expr = expr.replace("()", "").replace("{}","")
+        expr = expr.replace("<>", "").replace("[]", "")
+
         if inbracketround or inbracketsquare or inbracketangle or inbracketcurly:
             return self._error("bracket")
         
@@ -799,21 +785,25 @@ class JishoSearcher():
 
             return res
 
-    def search_print(self, expr: str, num:int = 200) -> None: # print the result
+    def search_print(self, expr: str, num:int = 200, file = False) -> None: # print the result
         a = time()
         res = test.search(expr)
         print(f"Expr:{expr}")
         print(f"Found {len(res)} items in {time() - a:.2f} seconds:")
+        print()
 
-        for i in range(len(res)):
-            print(res[i], end="")
-            print(("\n" if (i%10) == 9 else "\t"),end="")
+        if res[0] == "#": # Error
+            print(res)
+        else:
+            for i in range(len(res)):
+                print(res[i], end="")
+                print(("\n" if (i%10) == 9 else "\t"),end="")
         
+        print()
         print()
 
 if __name__ == "__main__":
-    print("你好")
-    test = JishoSearcher()
+    test = JishoSearcher(lang="ja")
     # expr = "abcd"
     # format = [0,-2, 0, 0]
     # for i in test._splitter(expr, format):
@@ -823,6 +813,6 @@ if __name__ == "__main__":
     # for i in dict:
     #     flag = test._indict(i) and flag
     # print(test._indict("awa"))
-    test.search_print("AB;!JI;QW")
-    #test.search_print("う＠AZう;！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
+    # test.search_print("AB;!JI;QW")
+    #test.search_print("！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
     #test.search_print("う＠う")
