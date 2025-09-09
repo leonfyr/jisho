@@ -1,3 +1,5 @@
+!! THIS README IS NOT UP TO DATE !!
+
 # Jisho Matcher 语法使用指南
 
 Jisho Matcher 采用类 Qat 的语法设计进行日语词汇匹配.

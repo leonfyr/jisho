@@ -1,8 +1,10 @@
+#%% IMPORTS
 from re import fullmatch as fm
 from configparser import ConfigParser
 from time import time
+from copy import deepcopy as dcopy # prevent error from shallow copy
 
-### GLOBAL VARIABLES
+#%% GLOBAL VARIABLES
 DICT_PATH = "buta014.dic"
 ENCODING = "shift_JIS"
 TRANS = {
@@ -104,24 +106,23 @@ for i in dict:
 config = ConfigParser()
 config.read("./i18n.cfg",encoding="utf-8")
 
-### END
+#%% END
 
 class JishoSearcher():
+    #%% Initialization & Other Functions
     def  __init__(self, lang:str="en"):
         # Language Setup
         self.lang = lang
 
 
-    # Raise An Error
+    # Raise an error message
     def _error(self, text:str, ex:str="") -> str: # ex: explain
-        # TODO: Error Message Stored Exclusively
-        # TODO: More specific syntax error
         res = "#" + config[self.lang][text]
         res += ":" + ex
 
         return res
     
-    # Normalization
+    # Normalization before processing
     def _normalize(self, expr:str) -> str:
         inbracketround = 0
         inbracketsquare = 0
@@ -225,15 +226,15 @@ class JishoSearcher():
         
         return expr
         
-
+    # Whether the expression is in the dictionary
     def _indict(self, expr:str) -> bool:
         try:
             return (hasht[hash(expr)] == expr)
         except KeyError: # not in the hash table
             return False
-
+    
+    # Permutation of the expression (for <...>)
     def _permutation(self, expr: str):
-        # Permutation of the expression
         if len(expr) == 1:
             return [expr]
         res = []
@@ -245,6 +246,7 @@ class JishoSearcher():
         res = list(set(res)) # unique
         return res
     
+    #%% Set Operations
     def _union(self, a:str, b:str) -> str:
         return ''.join(set(a) | set(b))
     
@@ -253,10 +255,9 @@ class JishoSearcher():
     
     def _complement(self, a:str) -> str:
         return ''.join(set(KANA) - set(a))
-    
-    def _letter2kanas(self, a:str):
-        pass
 
+    
+    #%% Splitter
     def _splitter_re(self, expr, format):
         length = format[0]
         if len(format) == 1:
@@ -284,15 +285,18 @@ class JishoSearcher():
                     self._splitter_re(expr[i:], format[1:])
                     self._splitter_stack.pop()
 
-    def _splitter(self, expr, format):  # split the expr according to the format, the length limit is set by `format`
+    # split the expr according to the format, the length limit is set by format
+    def _splitter(self, expr, format): 
         # 2 means length = 2
         # -2 means length >= 2
         self._splitter_stack = []
         self._splitter_ans = []
         self._splitter_re(expr, format)
         return self._splitter_ans
+    
 
-    ### Handle the brackets
+    
+    #%% Handle the brackets
     def _curly(self, expr:str) -> str:
         if expr == "":
             return ""
@@ -361,9 +365,9 @@ class JishoSearcher():
             
             return res
 
+    # Process the brackets
+    # _square + _curly
     def _bracket(self, expr:str):
-        # Process the brackets
-        # _square + _curly
 
         # one bracket only
         if expr.count('[') > 1 or expr.count('{') > 1:
@@ -379,10 +383,118 @@ class JishoSearcher():
         
         return res
 
-    ###
 
-    def _ex2re(self, expr:str) -> str:
-        if '<' in expr: # rearrange
+
+    #%% Process Expression _process_normal and _process_qat
+
+    # Expression -> regex
+    # Process ?* and brackets
+    def _regex(self, expr:str) -> str:
+        res = ""
+        i = 0
+        while i < len(expr):
+            if expr[i] == '?' or expr[i] == "*":
+
+                ### READ BRACKET
+                j = i + 1
+                
+                while True:
+                    if j == len(expr):
+                        break
+                    iscurly = False
+                    if expr[j] == '{':
+                        iscurly = True
+                    elif expr[j] == '[':
+                        iscurly = False
+                    else:
+                        break
+
+                    while (iscurly and expr[j] != '}') or (not iscurly and expr[j] != ']'):
+                        j += 1
+                        if j == len(expr):
+                            break
+                    j += 1
+                ###
+
+                if j == i + 1: # No Bracket
+                    if expr[i] == '?':
+                        res += '.'
+                    else:
+                        res += '.*'
+
+                else: # Handle Bracket
+                    bracket = self._bracket(expr[i+1:j])
+                    if bracket[0] == "#": # Error
+                        return bracket
+                    
+                    if expr[i] == '?':
+                        if '{' in bracket:
+                            return self._error("syntax", ex=expr[i:j])
+                        elif '[' in bracket:
+                            res += bracket
+                        else:
+                            return self._error("syntax", ex=expr[i:j])
+                    elif expr[i] == '*': # expr[i] == "*"
+                        if '[' in bracket:
+                            if '{' in bracket:
+                                res += bracket
+                            else:
+                                res += bracket + '*'
+                        else:
+                            if '{' in bracket:
+                                res += '.' + bracket
+                i = j
+
+            else:
+                res += expr[i]
+                i += 1
+
+        return res
+    
+    # Process @ and QAT letters
+    # and pass it to _regex
+    def _atQAT(self, expr:str) -> str: # TODO
+        if "@" in expr or (any([c.isalpha() and c.isupper() for c in expr])): # has @ or QAT letters
+            # break down & format
+            exprs = []
+            counter = 0
+            format = []
+            while counter < len(expr):
+                letter = expr[counter]
+
+                if letter == "@": # @
+                    exprs.append(letter)
+                    format.append(-2)
+
+                    counter += 1
+
+                elif letter in ULETTER: # QAT letter
+                    exprs.append(letter)
+                    format.append(self.qat_letters[ord(letter)-65])
+
+                    counter += 1
+
+                else: # Normal expression: _regex
+                    begin = counter
+                    while counter < len(expr) and expr[counter] != "@" and (expr[counter] not in ULETTER):
+                        counter += 1
+
+                    exprs.append(self._regex(expr[begin:counter]))
+                    format.append(0)
+
+            return ["@", exprs, format]
+        
+        else: # no @ or QAT letters
+            return self._regex(expr)
+
+    # Turn the expression into regex tree
+    # Permutate <...>
+    # and pass it to _atQAT
+    # lg: less than, greater than
+    def _lg(self, expr:str) -> str:
+        if "<" in expr:
+
+            # Permutate <>
             words = []
             i = 0
             while i < len(expr):
@@ -390,20 +502,16 @@ class JishoSearcher():
                     j = i+1
                     while j < len(expr) and expr[j] != '>':
                         j += 1
-                    words.append(self._permutation(expr[i+1:j].replace('?','.')))
+                    words.append(self._permutation(expr[i+1:j].replace('?','.').replace("*",".*"))) # TODO
                     i = j + 1
                 else: # normal
                     j = i+1
                     while j < len(expr) and expr[j] != '<':
                         j += 1
-                    text = self._ex2re(expr[i:j])
-                    if text[0] == '#': # ERR
-                        return text
-                    words.append(text)
+                    words.append(expr[i:j])
                     i = j
 
-            # Combine
-            #print(words)
+            # Combine words -> res
             res = []
             pointer = 0
 
@@ -411,87 +519,34 @@ class JishoSearcher():
                 res.append("")
 
             while pointer < len(words):
-                #print(res)
                 if type(words[pointer]) == list: # <>
                     res2 = []
                     for i in res:
                         for j in words[pointer]:
                             res2.append(i+j)
-                    res = res2
+                    res = dcopy(res2)
 
                 elif type(words[pointer]) == str: # normal
                     res2 = []
                     for i in res:
                         res2.append(i+words[pointer])
-                    res = res2
+                    res = dcopy(res2)
                 pointer += 1
-                    
+            
+            # _atQAT
+            res = [self._atQAT(i) for i in res]
+
+            for i in res:
+                if i[0] == "#": # Error
+                    return i
+                
             return ['|', res]
-        
-        else: # normal case
-            res = ""
-            i = 0
-            while i < len(expr):
-                if expr[i] == '?' or expr[i] == "*":
+        else:
+            return self._atQAT(expr)
 
-                    ### READ BRACKET
-                    j = i + 1
-                    
-                    while True:
-                        if j == len(expr):
-                            break
-                        iscurly = False
-                        if expr[j] == '{':
-                            iscurly = True
-                        elif expr[j] == '[':
-                            iscurly = False
-                        else:
-                            break
-
-                        while (iscurly and expr[j] != '}') or (not iscurly and expr[j] != ']'):
-                            j += 1
-                            if j == len(expr):
-                                break
-                        j += 1
-                    ###
-
-                    if j == i + 1: # No Bracket
-                        if expr[i] == '?':
-                            res += '.'
-                        else:
-                            res += '.*'
-
-                    else: # Handle Bracket
-                        bracket = self._bracket(expr[i+1:j])
-                        if bracket[0] == "#": # Error
-                            return bracket
-                        
-                        if expr[i] == '?':
-                            if '{' in bracket:
-                                return self._error("syntax", ex=expr[i:j])
-                            elif '[' in bracket:
-                                res += bracket
-                            else:
-                                return self._error("syntax", ex=expr[i:j])
-                        elif expr[i] == '*': # expr[i] == "*"
-                            if '[' in bracket:
-                                if '{' in bracket:
-                                    res += bracket
-                                else:
-                                    res += bracket + '*'
-                            else:
-                                if '{' in bracket:
-                                    res += '.' + bracket
-                    i = j
-
-                else:
-                    res += expr[i]
-                    i += 1
-
-            return res
-
-    # Expression -> re
-    def _breakup(self, expr:str):
+    # Process global &|! (gb: global boolean)
+    # and pass it to _lg
+    def _gb(self, expr:str):
         #print(expr)
         if expr == "": # expr shouldn't be empty
             return self._error("empty")
@@ -533,82 +588,53 @@ class JishoSearcher():
 
         # OR
         if len(ors) > 0:
-            #print(1)
             exprs = []
             last = 0
             for i in ors:
-                text = self._breakup(expr[last:i])
+                text = self._gb(expr[last:i])
                 if text[0] == "#": # Error
                     return text
                 exprs.append(text)
                 last = i+1
-            exprs.append(self._breakup(expr[last:]))
+            exprs.append(self._gb(expr[last:]))
             return ['|', exprs]
         
         # AND
         elif len(ands) > 0:
-            #print(2)
             exprs = []
             last = 0
             for i in ands:
-                text = self._breakup(expr[last:i])
+                text = self._gb(expr[last:i])
                 if text[0] == "#": # Error
                     return text
                 exprs.append(text)
                 last = i+1
-            exprs.append(self._breakup(expr[last:]))
+            exprs.append(self._gb(expr[last:]))
             return ['&', exprs]
         
         # NOT
         elif expr[0] == "!":
-            #print(3)
-            return ["!", [self._breakup(expr[1:]), ]]
+            return ["!", [self._gb(expr[1:]), ]]
         
-        # normal case
+        # normal case, pass it to _lg
         else:
-            #print(4)
-            return self._ex2re(expr)
+            return self._lg(expr)
 
-    # fullmatch
-    def _fm(self, expr, word):
+    # Process Normal Expression (_gb)
+    def _process_normal(self, expr:str):
+        return self._gb(expr)
+
+    # Process QAT Expression (_atQAT)
+    def _process_qat(self, expr:str):
+        return self._atQAT(expr)
+    
+    #%% Match: Normal
+
+    # normal full match
+    def _nfm(self, expr, word):
         if type(expr) == str:
-            if expr == "@":
+            if expr == "@": # @
                 return self._indict(word)
-            elif "@" in expr:
-                exprs = [] # break down 
-                counter = 0
-                while counter < len(expr):
-                    if expr[counter] == "@":
-                        exprs.append("@")
-                        counter += 1
-                    else:
-                        begin = counter
-                        while counter < len(expr) and expr[counter] != "@":
-                            counter += 1
-                        exprs.append(expr[begin:counter])
-
-                format = [-2 if i == "@" else 0 for i in exprs]
-                
-                split = self._splitter(word, format)
-                # print(split)
-                if split == []:
-                    return False
-                
-                for i in split:
-                    counter = 0
-                    flag = True
-                    for j in range(len(i)):
-                        temp = self._fm(exprs[j], i[j])
-                        # print(temp)
-                        flag &= temp
-
-                    if flag == True:
-                        # print("/")
-                        return True
-                    
-                # print("/")
-                return False
-                    
                 
             else: # normal cases
                 return fm(expr, word) != None
@@ -617,20 +643,143 @@ class JishoSearcher():
             exprs = expr[1] # a list of expressions
             if opt == '&':
                 for i in exprs:
-                    if self._fm(i, word) == False:
+                    if self._nfm(i, word) == False:
                         return False
                 return True
             elif opt == '|':
                 for i in exprs:
-                    if self._fm(i, word) == True:
+                    if self._nfm(i, word) == True:
                         return True
                 return False
             elif opt == '!':
-                return not self._fm(exprs[0], word)
-            
+                return not self._nfm(exprs[0], word)
+            elif opt == "@":
+                # Split the word according to the format
+                format = expr[2]
+                split = self._splitter(word, format)
+                if split == []:
+                    return False
+                
+                # Try all the cases
+                for case in split:
+                    flag = True
+                    for j in range(len(case)):
+                        temp = self._nfm(exprs[j], case[j])
+                        flag &= temp
+
+                    if flag:
+                        return True
+                    
+                return False
+
+    #%% Match: QAT QAQ
+
+    # Set up QAT QAQ
+    def _setup_qat(self):
+        self.qat_exprs = [] # Expressions (["@",,] or "")
+        self.qat_letters = [0 for i in range(26)] # length limit
+
+        self.qat_current_letters = ['' for i in range(26)] # current letters
+        self.qat_current_answer = [] # current answer
+
+        self.qat_num_limit = 0
+        self.qat_start_time = time()
+
+        self.qat_answers = []
+        self.qat_error = " "
+        self.stop = False
+
+    # QAT (dfs)
+    def _qat(self, depth:int):
+        # if time() - self.qat_start_time > TIME_LIMIT: # timeout
+        #     self.qat_error = self._error("timeout")
+        #     self.stop = True
+        #     return
+        if self.stop: # Stop
+            return
+        if depth == len(self.qat_exprs): # reach the end
+            self.qat_answers.append(";".join(self.qat_current_answer))
+            if len(self.qat_answers) >= self.qat_num_limit:
+                self.stop = True
+            return
+        else:
+            exprssion = self.qat_exprs[depth]
+            if type(exprssion) == str: # normal expression
+                for word in dict: # iterate the dictionary
+                    if self._nfm(exprssion, word) == True:
+                        self.qat_current_answer[depth] = word
+                        self._qat(depth + 1)
+                    if self.stop:
+                        return
+
+            else: # has @ or QAT letters
+
+                # Substitute defined QAT letters
+                # Find undefined letters
+                expr, format = dcopy(exprssion[1]), dcopy(exprssion[2])
+                undefined = []
+                for i in range(len(expr)): # Substitute
+                    if expr[i] in ULETTER: # QAT letter
+                        if self.qat_current_letters[ord(expr[i])-65] != "": # Defined
+                            expr[i] = self.qat_current_letters[ord(expr[i])-65]
+                            format[i] = len(expr[i])
+                        else: # Not defined
+                            undefined.append(i)
+
+                for word in dict:
+                    split = self._splitter(word, format)
+                    if split == []:
+                        continue
+
+                    self.qat_current_answer[depth] = word
+
+                    for case in split:
+                        # Build new expr
+                        valid = True
+                        expr_new = dcopy(expr)
+                        defined = []
+                        defined_val = []
+                        for i in range(len(expr)):
+                            if expr[i] in ULETTER or expr[i] == "@":
+                                if expr_new[i] in defined:
+                                    if defined_val[defined.index(expr_new[i])] != case[i]:
+                                        valid = False
+                                        break
+                                    else:
+                                        expr_new[i] = case[i]
+
+                                elif i in undefined:
+                                    defined.append(expr_new[i])
+                                    defined_val.append(case[i])
+                                    expr_new[i] = case[i]
+
+                                elif expr_new[i] != case[i]:
+                                    expr_new[i] = case[i]
+
+                        if not valid:
+                            continue
+
+                        if self._nfm("".join(expr_new), word) == True: # Match
+                            # Update current letters
+                            updated = []
+                            for i in undefined:
+                                self.qat_current_letters[ord(expr[i])-65] = case[i]
+
+                            self._qat(depth + 1)
+
+                            # Rollback current letters
+                            for i in undefined:
+                                self.qat_current_letters[ord(expr[i])-65] = ""
+                        
+                    if self.stop:
+                        return
+                    
+
+    #%% Search (Main Processing)
 
     # Search
     def search(self, expr: str, num:int = 200) -> str:
+        self._setup_qat()
         # Empty
         if expr == "":
             return self._error("empty")
@@ -640,27 +789,55 @@ class JishoSearcher():
             return expr
 
         # Process
-        #  QAT QAQ
-        if ';' in expr:
+        # - Normal
+        if ';' not in expr:
+            expr_re = self._process_normal(expr)
+            if expr_re[0] == "#": # Error
+                return expr_re
+            
+            res = []
+            res_len = 0
+            start_time = time()
+            for i in dict: # Search
+                if self._nfm(expr_re, i) == True: # Match
+                    res_len += 1
+                    res.append(i)
+                    if res_len == num:
+                        break
+
+                if time() - start_time > TIME_LIMIT: # timeout
+                    return self._error("timeout")
+
+            return res
+        
+        # - QAT QAQ
+        else:
+            # Reject <>
+            if "<" in expr or ">" in expr:
+                return self._error("syntax", ex="< or > in QAT")
+            
+            self.qat_num_limit = num
+
             exprs = expr.split(";")
 
-            # Delete Empty Expressions
-            for i in range(len(exprs)-1, 0, -1):
-                if exprs[i] == "":
-                    del exprs[i]
-            if exprs == []:
-                return self._error("empty")
-            
-            # Register Existed Letters
             self.qat_letters = [0 for i in range(26)]
-            # 0 : not exist, -1 : exist
-            for i in exprs:
-                for j in range(26):
-                    if chr(j+65) in i:
-                        self.qat_letters[j] = -1
+
+            for i in range(len(exprs)-1, -1, -1):
+                if exprs[i] == "": # Delete Empty Expressions
+                    del exprs[i]
+                else:
+                    while exprs[i][0] == '(' and exprs[i][-1] == ')': # Remove unnecessary ()
+                        exprs[i] = exprs[i][1:-1]
+                    # Register Existed Letters
+                    # 0 : not exist, -1 : exist
+                    for j in range(26):
+                        if chr(j+65) in exprs[i]:
+                            self.qat_letters[j] = -1
+
+            if exprs == []: # check if empty
+                return self._error("empty")
 
             # Find Length Limitation
-            iterator = -1
             for i in range(len(exprs)-1, -1, -1):
                 if '=' in exprs[i]: # Fixed Length
                     condition = exprs[i].split('=')
@@ -684,115 +861,106 @@ class JishoSearcher():
 
                     del exprs[i] # Delete the expression
             
-            # sort, putting the expression with global &|! last
+            if exprs == []: # check if empty
+                return self._error("empty")
             
-            for i in range(len(exprs)-1, -1, -1):
-                # find global &|
-                inbracketsquare = 0
-                inbracketround = 0
-                flag = False
-                for j in range(len(expr[i])):
-                    if expr[i][j] == '[':
-                        inbracketsquare += 1
-                    elif expr[i][j] == ']':
-                        inbracketsquare -= 1
-                    elif expr[i][j] == '(':
-                        inbracketround += 1
-                    elif expr[i][j] == ')':
-                        inbracketround -= 1
-                    if not bool(inbracketsquare) and not bool(inbracketround):
-                        if expr[i][j] in ['&', '|', '!']:
-                            flag = True
-                            break
-                if flag:
-                    exprs.append(exprs[i])
-                    del exprs[i]
+            # reject global &|!
+            for i in range(len(exprs)):
+                inbracket_square = 0
+                inbracket_round = 0
+                for j in range(len(exprs[i])):
+                    if exprs[i][j] == '[':
+                        inbracket_square += 1
+                    elif exprs[i][j] == ']':
+                        inbracket_square -= 1
+                    elif exprs[i][j] == '(':
+                        inbracket_round += 1
+                    elif exprs[i][j] == ')':
+                        inbracket_round -= 1
+                    if not bool(inbracket_square) and not bool(inbracket_round):
+                        if exprs[i][j] in ['&', '|', '!']:
+                            return self._error("syntax", ex=exprs[i])
             
-            print(exprs[i])
-            return "123"
+            # Sort, put the most number of letters first
+            exprs.sort(key = lambda x: sum([(c.isalpha() and c.isupper()) for c in x]), reverse=True)
 
             letter_num = sum([(i != 0) for i in self.qat_letters]) # number of letters
-            
-            if letter_num != 0: # QAT
-                if iterator == -1: # Cannot find an iterator QAQ
-                    # TODO: QAT without iterator
-                    return self._error("noiterator")
-                
-                
 
-            else: # No letters, Special Case (combination of non-qat solutions)
-                res = []
-                start_time = time()
+            # if letter_num != 0: # QAT (dfs)
 
-                # Search for each expression
-                for i in range(len(exprs)):
-                    expr_re = self._breakup(exprs[i])
-                    if expr_re[0] == "#": # Error
-                        return expr_re
+            self.qat_exprs = [self._process_qat(i) for i in exprs]
+            self.qat_current_answer = ['' for i in exprs]
+            for i in self.qat_exprs:
+                if i[0] == "#": # Error
+                    return i
+
+            self._qat(0)
+
+            if self.qat_error[0] == "#": # Error
+                return self.qat_error
+            else:
+                return self.qat_answers
+
+            # else: # No letters, Special Case (combination of non-qat solutions)
+            #     res = []
+            #     start_time = time()
+
+            #     # Search for each expression
+            #     for i in range(len(exprs)):
+            #         expr_re = self._process_normal(exprs[i])
+            #         if expr_re[0] == "#": # Error
+            #             return expr_re
                     
-                    subres = []
+            #         subres = []
 
-                    # Search
-                    for j in dict:
-                        if self._fm(expr_re, j) == True: # Match
-                            subres.append(j)
-                            if len(subres) == num:
-                                break
+            #         # Search
+            #         for j in dict:
+            #             if self._nfm(expr_re, j) == True: # Match
+            #                 subres.append(j)
+            #                 if len(subres) == num:
+            #                     break
 
-                        if time() - start_time > TIME_LIMIT: # timeout
-                            return self._error("timeout")
+            #             if time() - start_time > TIME_LIMIT: # timeout
+            #                 return self._error("timeout")
                         
-                    # Store
-                    res.append(subres)
+            #         # Store
+            #         res.append(subres)
 
-                # Combine
-                answer = []
-                for i in range(num):
-                    tmp = ""
+            #     # Combine
+            #     answer = []
+            #     for i in range(num):
+            #         tmp = ""
                     
-                    for j in range(len(exprs)):
-                        if i < len(res[j]): # Available
-                            tmp += res[j][i] + ";"
-                        else:
-                            tmp = "#" + tmp
+            #         for j in range(len(exprs)):
+            #             if i < len(res[j]): # Available
+            #                 tmp += res[j][i] + ";"
+            #             else:
+            #                 tmp = "#" + tmp
 
-                    if tmp[0] == "#" or tmp == "": # No more answers
-                        break
+            #         if tmp[0] == "#" or tmp == "": # No more answers
+            #             break
 
-                    answer.append(tmp[:-1])
+            #         answer.append(tmp[:-1])
 
-                return answer
-                
-
-        #  Normal
-        else:
-            expr_re = self._breakup(expr)
-            if expr_re[0] == "#": # Error
-                return expr_re
-            
-            res = []
-            res_len = 0
-            start_time = time()
-            for i in dict: # Search
-                if self._fm(expr_re, i) == True: # Match
-                    res_len += 1
-                    res.append(i)
-                    if res_len == num:
-                        break
-
-                if time() - start_time > TIME_LIMIT: # timeout
-                    return self._error("timeout")
-
-            return res
-
-    def search_print(self, expr: str, num:int = 200, file = False) -> None: # print the result
+            #     return answer
+    
+    # print the result
+    def search_print(self, expr: str, num:int = 200, file = False) -> None: 
         a = time()
-        res = test.search(expr)
+        try:
+            res = self.search(expr, num=num)
+        except Exception as e:
+            print(f"Unexpected Error: {str(e)}")
+            return
+        
         print(f"Expr:{expr}")
         print(f"Found {len(res)} items in {time() - a:.2f} seconds:")
         print()
 
-        if res[0] == "#": # Error
+        if res == []:
+            print("No Solution.")
+
+        elif res[0] == "#": # Error
             print(res)
         else:
             for i in range(len(res)):
@@ -801,9 +969,12 @@ class JishoSearcher():
         
         print()
         print()
+    #%% END
 
-if __name__ == "__main__":
-    test = JishoSearcher(lang="ja")
+#%% Main Programme
+
+def main():
+    test = JishoSearcher(lang="zh")
     # expr = "abcd"
     # format = [0,-2, 0, 0]
     # for i in test._splitter(expr, format):
@@ -813,6 +984,12 @@ if __name__ == "__main__":
     # for i in dict:
     #     flag = test._indict(i) and flag
     # print(test._indict("awa"))
-    # test.search_print("AB;!JI;QW")
-    #test.search_print("！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
-    #test.search_print("う＠う")
+    #test.search_print("AB;!JI;QW")
+    # test.search_print("！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
+    # print(test._process_normal("Aああ@あ*{1-3}ああO"))
+    # test.search_print("う＠う")
+    # test.search_print("CA;C;A?[o];ACB;(((AB?[C])));|A|=2;|B|=2;|C|=2")
+    test.search_print("AB?ま;A;B",num=20)
+
+if __name__ == "__main__":
+    main()
