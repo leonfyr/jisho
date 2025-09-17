@@ -240,7 +240,7 @@ class JishoSearcher():
         
     # Whether the expression is in the dictionary
     def _indict(self, expr: str) -> bool:
-        return expr in hasht
+        return hash(expr) in hasht
     
     # Permutation of the expression (for <...>) - optimized version
     def _permutation(self, expr: str):
