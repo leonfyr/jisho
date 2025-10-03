@@ -1,128 +1,4 @@
-#%% IMPORTS
-from re import fullmatch as fm
-from configparser import ConfigParser
-from time import time
-
-#%% GLOBAL VARIABLES
-DICT_PATH = "buta014.dic"
-ENCODING = "shift_JIS"
-TRANS = {
-    "？": "?",
-    "⋆": "*",
-    "＊": "*",
-    "【": "[",
-    "】": "]",
-    "「": "[",
-    "」": "]",
-    "『": "[",
-    "』": "]",
-    "＆": "&",
-    "｜": "|",
-    "！": "!",
-    "（": "(",
-    "）": ")",
-    "《": "<",
-    "》": ">",
-    "＜": "<",
-    "＞": ">",
-    "＠": "@",
-    "；": ";",
-    "＝": "=",
-    "“": "\"",
-    "”": "\"",
-    "‘": "\'",
-    "’": "\'",
-    "｛": "{",
-    "｝": "}",
-    "０": "0",
-    "１": "1",
-    "２": "2",
-    "３": "3",
-    "４": "4",
-    "５": "5",
-    "６": "6",
-    "７": "7",
-    "８": "8",
-    "９": "9",
-    "０": "0"
-
-}
-
-PI = 3.1415927 # 悄悄藏一个π
-
-KANA = set("あいうえおかがきぎくぐけげこごさざしじすずせぜそぞただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもやゆよらりるれろわをんー")
-
-ULETTER = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
-LLETTER = set("abcdefghijklmnopqrstuvwxyz")
-
-PUNC = set("?*[-]&|!()<>@;=\"\'{}")
-
-NUM = set("0123456789")
-
-ALLOW = KANA | ULETTER | LLETTER | PUNC | NUM
-
-# x for [aa], q for [nn]
-L2K = {
-    "x": "あいうえお",
-    "k": "かきくけこ",
-    "s": "さしすせそ",
-    "t": "たちつてと",
-    "n": "なにぬねの",
-    "h": "はひふへほ",
-    "m": "まみむめも",
-    "y": "やゆよ",
-    "r": "らりるれろ",
-    "w": "わを",
-    "g": "がぎぐげご",
-    "z": "ざじずぜぞ",
-    "d": "だぢづでど",
-    "b": "ばびぶべぼ",
-    "p": "ぱぴぷぺぽ",
-    "a": "あかさたなはまやらわがざだばぱ",
-    "i": "いきしちにひみりぎじぢびぴ",
-    "u": "うくすつぬふむゆるぐずづぶぷ",
-    "e": "えけせてねへめよれげぜでべぺ",
-    "o": "おこそとのほもよろをごぞどぼぽ",
-    "q": "ん"
-}
-
-TIME_LIMIT = 20 # 20s
-
-for i in ALLOW:
-    TRANS[i] = i
-
-# Read File
-with open(DICT_PATH, 'r', encoding=ENCODING) as f:
-    file = f.readlines()
-dict = [i.strip() for i in file]
-
-# Hash Table
-hasht = {}
-for i in dict:
-    hasht[hash(i)] = i
-
-# Create indices for faster lookup
-dict_by_length = {}
-dict_by_first_char = {}
-for word in dict:
-    # Index by length
-    length = len(word)
-    if length not in dict_by_length:
-        dict_by_length[length] = []
-    dict_by_length[length].append(word)
-    
-    # Index by first character
-    if word:
-        first_char = word[0]
-        if first_char not in dict_by_first_char:
-            dict_by_first_char[first_char] = []
-        dict_by_first_char[first_char].append(word)
-
-# i18n
-config = ConfigParser()
-config.read("./i18n.cfg",encoding="utf-8")
-
-#%% END
+from constants import *
 
 class JishoSearcher():
     #%% Initialization & Other Functions
@@ -698,7 +574,9 @@ class JishoSearcher():
         if self.stop: # Stop
             return
         if depth == len(self.qat_exprs): # reach the end
-            self.qat_answers.append(";".join(self.qat_current_answer))
+            answer_sorted = sorted(self.qat_current_answer, key = lambda x:x[1])
+            answer_sorted = [x[0] for x in answer_sorted]
+            self.qat_answers.append(";".join(answer_sorted))
             if len(self.qat_answers) >= self.qat_num_limit:
                 self.stop = True
             return
@@ -714,7 +592,7 @@ class JishoSearcher():
                 
                 for word in search_candidates: # iterate the dictionary
                     if self._nfm(exprssion, word) == True:
-                        self.qat_current_answer[depth] = word
+                        self.qat_current_answer[depth][0] = word
                         self._qat(depth + 1)
                     if self.stop:
                         return
@@ -738,7 +616,7 @@ class JishoSearcher():
                     if split == []:
                         continue
 
-                    self.qat_current_answer[depth] = word
+                    self.qat_current_answer[depth][0] = word
 
                     for case in split:
                         # Build new expr
@@ -899,10 +777,13 @@ class JishoSearcher():
                         return self._error("syntax", ex=expr)
             
             # Sort expressions by number of uppercase letters (most first)
+            qat_order = [i for i in range(len(exprs))]
+            qat_order.sort(key=lambda x: sum(c.isupper() and c.isalpha() for c in exprs[x]), reverse=True)
             exprs.sort(key=lambda x: sum(c.isupper() and c.isalpha() for c in x), reverse=True)
 
             self.qat_exprs = [self._process_qat(i) for i in exprs]
-            self.qat_current_answer = ['' for i in exprs]
+            self.qat_current_answer = [['', qat_order[i]] for i in range(len(exprs))]
+
             for i in self.qat_exprs:
                 if i[0] == "#": # Error
                     return i
@@ -948,23 +829,6 @@ class JishoSearcher():
 
 #%% Main Programme
 
-def main():
-    test = JishoSearcher(lang="zh")
-    # expr = "abcd"
-    # format = [0,-2, 0, 0]
-    # for i in test._splitter(expr, format):
-    #     print(i)
-    # print(len(test._splitter(expr, format)))
-    # flag = True
-    # for i in dict:
-    #     flag = test._indict(i) and flag
-    # print(test._indict("awa"))
-    #test.search_print("AB;!JI;QW")
-    # test.search_print("！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
-    # print(test._process_normal("Aああ@あ*{1-3}ああO"))
-    # test.search_print("う＠う")
-    # test.search_print("CA;C;A?[o];ACB;(((AB?[C])));|A|=2;|B|=2;|C|=2")
-    test.search_print("AB?ま;A;B",num=20)
-
 if __name__ == "__main__":
-    main()
+    import test
+    test.test()
