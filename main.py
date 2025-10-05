@@ -345,8 +345,14 @@ class JishoSearcher():
                     counter += 1
 
                 elif letter in ULETTER: # QAT letter
-                    exprs.append(letter)
                     format.append(self.qat_letters[ord(letter)-65])
+
+                    if counter + 1 != len(expr) and expr[counter + 1] in ['\"', '\'']: # Voiced and semi-voiced
+                        exprs.append(letter + expr[counter + 1])
+                        counter += 1
+                        
+                    else: # Normal QAT letter
+                        exprs.append(letter)
 
                     counter += 1
 
@@ -549,6 +555,43 @@ class JishoSearcher():
                 return False
 
     #%% Match: QAT QAQ
+    
+    # VOICED AND UN-SEMI-VOICED
+    def _voice(self, letter:str) -> str: # voice a kana
+        ans = ""
+        for i in letter:
+            ans += VOICED_KANA[UN_VOICED_KANA.find(i)]
+            if ans[-1] == '#': # NOT FOUND
+                return '#'
+            
+        return ans
+
+    def _semi_voice(self, letter:str) -> str: # semi-voice a kana
+        ans = ""
+        for i in letter:
+            ans += SEMI_VOICED_KANA[UN_SEMI_VOICED_KANA.find(i)]
+            if ans[-1] == '#': # NOT FOUND
+                return '#'
+            
+        return ans
+
+    def _un_voice(self, letter:str) -> str: # un-voice a kana
+        ans = ""
+        for i in letter:
+            ans += UN_VOICED_KANA[VOICED_KANA.find(i)]
+            if ans[-1] == '#': # NOT FOUND
+                return '#'
+            
+        return ans
+
+    def _un_semi_voice(self, letter:str) -> str: # un-semi-voice a kana
+        ans = ""
+        for i in letter:
+            ans += UN_SEMI_VOICED_KANA[SEMI_VOICED_KANA.find(i)]
+            if ans[-1] == '#': # NOT FOUND
+                return '#'
+            
+        return ans
 
     # Set up QAT QAQ
     def _setup_qat(self):
@@ -604,10 +647,21 @@ class JishoSearcher():
                 expr, format = exprssion[1][:], exprssion[2][:]  # Shallow copy instead of deep copy
                 undefined = []
                 for i in range(len(expr)): # Substitute
-                    if expr[i] in ULETTER: # QAT letter
-                        if self.qat_current_letters[ord(expr[i])-65] != "": # Defined
-                            expr[i] = self.qat_current_letters[ord(expr[i])-65]
+                    if expr[i][0] in ULETTER: # QAT letter
+                        if self.qat_current_letters[ord(expr[i][0])-65] != "": # Defined
+                            expr[i] = self.qat_current_letters[ord(expr[i][0])-65]
                             format[i] = len(expr[i])
+                            
+                            if len(expr[i]) == 2: # have voice or semi-voice
+                                if expr[i][1] == '"': # voice
+                                    expr[i] = self._voice(expr[i])
+                                    if expr[i] == "#": # ERROR 
+                                        return
+                                elif expr[i][1] == '\'': # semi-voice
+                                    expr[i] = self._semi_voice(expr[i])
+                                    if expr[i] == "#": # ERROR
+                                        return
+                                    
                         else: # Not defined
                             undefined.append(i)
 
@@ -625,8 +679,11 @@ class JishoSearcher():
                         defined = []
                         defined_val = []
                         for i in range(len(expr)):
-                            if expr[i] in ULETTER or expr[i] == "@":
-                                if expr_new[i] in defined:
+                            if expr[i][0] in ULETTER or expr[i] == "@":
+                                if expr[i] == "@":
+                                    valid &= self._indict(case[i])
+                                    
+                                elif expr_new[i] in defined:
                                     if defined_val[defined.index(expr_new[i])] != case[i]:
                                         valid = False
                                         break
@@ -634,8 +691,15 @@ class JishoSearcher():
                                         expr_new[i] = case[i]
 
                                 elif i in undefined:
-                                    defined.append(expr_new[i])
-                                    defined_val.append(case[i])
+                                    defined.append(expr_new[i][0])
+                                    
+                                    if expr_new[i][-1] == '"': # un-voice
+                                        pass # TODO
+                                    elif expr_new[i][-1] == '\'': # un-semi-voice
+                                        pass # TODO
+                                    else:
+                                        defined_val.append(case[i])
+                                        
                                     expr_new[i] = case[i]
 
                                 elif expr_new[i] != case[i]:
@@ -676,10 +740,12 @@ class JishoSearcher():
         expr = self._normalize(expr)
         if expr[0] == '#': # ERR
             return expr
+        
+        qat_chance = sum([i in ULETTER.union(';') for i in expr])
 
         # Process
         # - Normal
-        if ';' not in expr:
+        if not qat_chance:
             expr_re = self._process_normal(expr)
             if expr_re[0] == "#": # Error
                 return expr_re

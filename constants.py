@@ -46,9 +46,19 @@ TRANS = {
 
 }
 
-PI = 3.1415927 # 悄悄藏一个π
+PI = 3.1415927 # 带π
 
 KANA = set("あいうえおかがきぎくぐけげこごさざしじすずせぜそぞただちぢつづてでとどなにぬねのはばぱひびぴふぶぷへべぺほぼぽまみむめもやゆよらりるれろわをんー")
+
+# Why it ends with a harsh tag:
+# if can't find the kana -> .find returns -1
+# [-1] = '#' -> ERROR!
+
+VOICED_KANA   = "がぎぐげござじずぜぞだぢづでどばびぶべぼ#"
+UN_VOICED_KANA = "かきくけこさしすせそたちつてとはひふへほ#"
+
+SEMI_VOICED_KANA   = "ぱぴぷぺぽ#"
+UN_SEMI_VOICED_KANA = "はひふへほ#"
 
 ULETTER = set("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
 LLETTER = set("abcdefghijklmnopqrstuvwxyz")
@@ -84,7 +94,8 @@ L2K = {
     "q": "ん"
 }
 
-TIME_LIMIT = 20 # 20s
+# 20s
+TIME_LIMIT = 20
 
 for i in ALLOW:
     TRANS[i] = i
