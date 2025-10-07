@@ -653,11 +653,11 @@ class JishoSearcher():
                             format[i] = len(expr[i])
                             
                             if len(expr[i]) == 2: # have voice or semi-voice
-                                if expr[i][1] == '"': # voice
+                                if expr[i][-1] == '"': # voice
                                     expr[i] = self._voice(expr[i])
                                     if expr[i] == "#": # ERROR 
                                         return
-                                elif expr[i][1] == '\'': # semi-voice
+                                elif expr[i][-1] == '\'': # semi-voice
                                     expr[i] = self._semi_voice(expr[i])
                                     if expr[i] == "#": # ERROR
                                         return
@@ -681,29 +681,43 @@ class JishoSearcher():
                         for i in range(len(expr)):
                             if expr[i][0] in ULETTER or expr[i] == "@":
                                 if expr[i] == "@":
-                                    valid &= self._indict(case[i])
+                                    valid = valid and self._indict(case[i])
                                     
-                                elif expr_new[i] in defined:
-                                    if defined_val[defined.index(expr_new[i])] != case[i]:
+                                elif expr_new[i][0] in defined:
+                                    compare_string = defined_val[defined.index(expr_new[i][0])]
+                                    
+                                    if expr_new[i][-1] == '"': # voice
+                                        compare_string = self._voice(compare_string)
+                                        if compare_string == "#": # Error
+                                            valid = False
+                                    elif expr_new[i][-1] == '\'': # semi-voice
+                                        compare_string = self._semi_voice(compare_string)
+                                        if compare_string == "#": # Error
+                                            valid = False
+                                            
+                                    if case[i] != compare_string:
                                         valid = False
-                                        break
-                                    else:
-                                        expr_new[i] = case[i]
 
                                 elif i in undefined:
                                     defined.append(expr_new[i][0])
                                     
                                     if expr_new[i][-1] == '"': # un-voice
-                                        pass # TODO
+                                        defined_val.append(self._un_voice(case[i]))
+                                        if defined_val[-1] == '#': # ERROR
+                                            valid = False # No need to pop the defined_val
+                                            
                                     elif expr_new[i][-1] == '\'': # un-semi-voice
-                                        pass # TODO
+                                        defined_val.append(self._un_semi_voice(case[i]))
+                                        if defined_val[-1] == '#': # ERROR
+                                            valid = False
+                                            
                                     else:
                                         defined_val.append(case[i])
-                                        
-                                    expr_new[i] = case[i]
+                                
+                                if valid == False:
+                                    break
 
-                                elif expr_new[i] != case[i]:
-                                    expr_new[i] = case[i]
+                                expr_new[i] = case[i]
 
                         if not valid:
                             continue
@@ -711,13 +725,13 @@ class JishoSearcher():
                         if self._nfm("".join(expr_new), word) == True: # Match
                             # Update current letters
                             for i in undefined:
-                                self.qat_current_letters[ord(expr[i])-65] = case[i]
+                                self.qat_current_letters[ord(expr[i][0])-65] = expr_new[i]
 
                             self._qat(depth + 1)
 
                             # Rollback current letters
                             for i in undefined:
-                                self.qat_current_letters[ord(expr[i])-65] = ""
+                                self.qat_current_letters[ord(expr[i][0])-65] = ""
                         
                     if self.stop:
                         return
@@ -853,7 +867,7 @@ class JishoSearcher():
             for i in self.qat_exprs:
                 if i[0] == "#": # Error
                     return i
-
+            
             self._qat(0)
 
             if self.qat_error[0] == "#": # Error
