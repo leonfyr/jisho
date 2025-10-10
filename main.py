@@ -210,7 +210,7 @@ class JishoSearcher():
             else:
                 break
 
-        # Find global &| operators
+        # Find &| operators
         inbracket = 0
         for i, char in enumerate(expr):
             if char == '(':
@@ -392,13 +392,10 @@ class JishoSearcher():
                         j += 1
                     words.append(expr[i:j])
                     i = j
-
+                
             # Combine words -> res
-            res = []
+            res = [""]
             pointer = 0
-
-            if type(words[0]) == list: # first <>
-                res.append("")
 
             while pointer < len(words):
                 if type(words[pointer]) == list: # <>
@@ -783,6 +780,8 @@ class JishoSearcher():
         # - Normal
         if not qat_chance:
             expr_re = self._process_normal(expr)
+            if DEBUG:
+                print(f"Regex expression normal:{expr_re}")
             if expr_re[0] == "#": # Error
                 return expr_re
             
