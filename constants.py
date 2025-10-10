@@ -2,6 +2,10 @@ from re import fullmatch as fm
 from configparser import ConfigParser
 from time import time
 
+DEBUG = True
+if DEBUG:
+    import tqdm
+
 DICT_PATH = "jisho.dic"
 ENCODING = "shift_JIS"
 TRANS = {

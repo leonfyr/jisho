@@ -633,9 +633,14 @@ class JishoSearcher():
                     if target_length in dict_by_length:
                         search_candidates = dict_by_length[target_length]
                 
-                for word in search_candidates: # iterate the dictionary
-                    if self._nfm(exprssion, word) == True:
-                        self.qat_current_answer[depth][0] = word
+                if DEBUG and depth == 0: # show progress if debug
+                    iterate = tqdm.trange(len(search_candidates))
+                else:
+                    iterate = range(len(search_candidates))
+                    
+                for i in iterate: # iterate the dictionary
+                    if self._nfm(exprssion, search_candidates[i]) == True:
+                        self.qat_current_answer[depth][0] = search_candidates[i]
                         self._qat(depth + 1)
                     if self.stop:
                         return
@@ -649,23 +654,35 @@ class JishoSearcher():
                 for i in range(len(expr)): # Substitute
                     if expr[i][0] in ULETTER: # QAT letter
                         if self.qat_current_letters[ord(expr[i][0])-65] != "": # Defined
-                            expr[i] = self.qat_current_letters[ord(expr[i][0])-65]
-                            format[i] = len(expr[i])
                             
                             if len(expr[i]) == 2: # have voice or semi-voice
                                 if expr[i][-1] == '"': # voice
-                                    expr[i] = self._voice(expr[i])
+                                    expr[i] = self._voice(self.qat_current_letters[ord(expr[i][0])-65])
                                     if expr[i] == "#": # ERROR 
                                         return
+                                    
                                 elif expr[i][-1] == '\'': # semi-voice
-                                    expr[i] = self._semi_voice(expr[i])
+                                    expr[i] = self._semi_voice(self.qat_current_letters[ord(expr[i][0])-65])
                                     if expr[i] == "#": # ERROR
                                         return
+                                    
+                            else: # not voice or semi-voice
+                                expr[i] = self.qat_current_letters[ord(expr[i][0])-65]
+                                
+                            format[i] = len(expr[i])
                                     
                         else: # Not defined
                             undefined.append(i)
 
-                for word in dict:
+                
+                if DEBUG and depth == 0: # show progress if debug
+                    iterate = tqdm.trange(len(dict))
+                else:
+                    iterate = range(len(dict))
+                    
+                for i in iterate:
+                    word = dict[i]
+                    
                     split = self._splitter(word, format)
                     if split == []:
                         continue
@@ -725,7 +742,12 @@ class JishoSearcher():
                         if self._nfm("".join(expr_new), word) == True: # Match
                             # Update current letters
                             for i in undefined:
-                                self.qat_current_letters[ord(expr[i][0])-65] = expr_new[i]
+                                if expr[i][-1] == '"': # voice
+                                    self.qat_current_letters[ord(expr[i][0])-65] = self._un_voice(expr_new[i])
+                                elif expr[i][-1] == '\'': # semi-voice
+                                    self.qat_current_letters[ord(expr[i][0])-65] = self._un_semi_voice(expr_new[i])
+                                else:
+                                    self.qat_current_letters[ord(expr[i][0])-65] = expr_new[i]
 
                             self._qat(depth + 1)
 
