@@ -14,5 +14,5 @@ def test():
     # test.search_print("AA;！＊｛５ー｝＆＜あ＞＊｛１ー３｝「！o」い")
     # test.search_print("ACB;CAB;ACAB;ABC\";|A|=1;|B|=1;|C|=1") 
     # test.search_print("づり?い")
-    test.search_print("AB\";A\"B\";|B|=1")
+    # test.search_print("AB\";A\"B\";|B|=1")
 test()

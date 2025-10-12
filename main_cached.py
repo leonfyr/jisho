@@ -5,6 +5,10 @@ class JishoSearcher():
     def  __init__(self, lang: str = "en"):
         # Language Setup
         self.lang = lang
+        # Cache for compiled patterns and results
+        self._pattern_cache = {}
+        self._result_cache = {}
+
 
     # Raise an error message
     def _error(self, text:str, ex:str="") -> str: # ex: explain
@@ -600,8 +604,6 @@ class JishoSearcher():
         self.qat_answers = []
         self.qat_error = " "
         self.stop = False
-        
-        self.qat_progress = [] # Progress of QAT
 
     # QAT (dfs)
     def _qat(self, depth:int):
